@@ -1,46 +1,47 @@
-import { ImageContainer, ProductContainer, ProductDetails } from "@/src/styles/pages/product";
-
+import { useMemo } from "react";
 import { GetStaticPaths, GetStaticProps } from "next";
-import { stripe } from "../../lib/stripe";
-import Stripe from "stripe";
 import Image from "next/image";
-import { useRouter } from "next/router";
-import axios from "axios";
-import { useState } from "react";
 import Head from "next/head";
+import Stripe from "stripe";
+
+import { stripe } from "../../lib/stripe";
+
+import { useShopping } from "../../hooks/useShopping";
+
+import { ImageContainer, ProductContainer, ProductDetails } from "../../styles/pages/product";
 
 interface ProductProps {
   product: {
     id: string;
     name: string;
     imageUrl: string;
-    price: string;
+    price: number;
+    priceFormat: string;
     description: string
     defaultPriceId: string
   }
 }
 
 export default function Product({ product }: ProductProps) {
-  // const router = useRouter()
-  const [isCreatingCheckoutSession, setIsCreatingCheckoutSession] = useState(false);
+  const { addProductByList, listProduct } = useShopping()
 
-  async function handleByProduct() {
-    try {
-      setIsCreatingCheckoutSession(true);
-      const response = await axios.post('/api/checkout', {
-        priceId: product.defaultPriceId,
-      });
+  const hasItemByShop = useMemo(() => {
+    return !!listProduct.find(prod => prod.id === product.id);
+  }, [listProduct]);
 
-      const { checkoutUrl } = response.data
-
-      window.location.href = checkoutUrl
-    } catch (error) {
-      // Conectar com uma ferramenta de observabilidade (Datadog / Sentry)
-
-      setIsCreatingCheckoutSession(false);
-      alert('Falha ao redirecionar ao checkout')
-    } 
+  function addItemByShopping() {
+    addProductByList({
+      id: product.id,
+      imageUrl: product.imageUrl,
+      name: product.name,
+      price: product.price,
+      priceFormat: product.priceFormat,
+      priceId: product.defaultPriceId,
+    });
   }
+
+  const disabledButton = hasItemByShop;
+  const textButton = hasItemByShop ? 'Item já está na sacola' : 'Colocar na sacola';
 
   return (
     <>
@@ -55,12 +56,12 @@ export default function Product({ product }: ProductProps) {
 
         <ProductDetails>
           <h1>{product.name}</h1>
-          <span>{product.price}</span>
+          <span>{product.priceFormat}</span>
           
           <p>{product.description}</p>
 
-          <button disabled={isCreatingCheckoutSession} onClick={handleByProduct}>
-            Comprar Agora
+          <button disabled={disabledButton} onClick={addItemByShopping}>
+            {textButton}
           </button>
         </ProductDetails>
       </ProductContainer>
@@ -92,7 +93,8 @@ export const getStaticProps: GetStaticProps<any, { id: string }> = async({ param
         id: product.id,
         name: product.name,
         imageUrl: product.images[0],
-        price: new Intl.NumberFormat('pt-Br', {
+        price: price.unit_amount || 0,
+        priceFormat: new Intl.NumberFormat('pt-Br', {
           style: 'currency',
           currency: 'BRL',
         }).format((price.unit_amount || 0) / 100),
